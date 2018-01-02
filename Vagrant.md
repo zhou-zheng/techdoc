@@ -14,24 +14,24 @@ $ vagrant up --provider=aws
 ## **Vagrant 环境**
 ### **Vagrant 环境操作**
 可以从 [HashiCorp's Vagrant Cloud box catalog](https://app.vagrantup.com/boxes/search) 获取各种 vagrant boxes。
-| 命令 | 描述 | 实例 |
-| --- | --- | --- |
-| vagrant -h | 查看有关 vagrant 的帮助 | vagrant -h |
-| vagrant version | 查看 vagrant 版本 | vagrant version |
-| vagrant init  [options] [name [url]] | 在当前目录初始化 Vagrantfile 文件 | vagrant init |
-| vagrant validate | 验证当前目录下的 Vagrantfile 文件 | vagrant validate |
-| vagrant box -h | 查看有关 vagrant box 帮助 | vagrant box -h 以及 vagrant box add -h 等 |
-| vagrant box add [options] \<name, url, or path\> | 安装 vagrant box        | vagrant box add hashicorp/precise64 或 vagrant box add centos/7 c:\CentOS-7-x86_64-Vagrant-1710_01.VirtualBox.box |
-| vagrant box remove \<name\> | 移除 vagrant box | vagrant box remove hashicorp/precise64 |
-| vagrant box list [options] | 查看 vagrant box 已安装列表 | vagrant box list |
-| vagrant up [options] [name\|id] | 启动 vagrant 环境 | vagrant up hashicorp/precise64 |
-| vagrant suspend [name\|id] | 挂起 vagrant 环境 | vagrant suspend hashicorp/precise64 |
-| vagrant resume [vm-name] | 恢复 vagrant 环境 | vagrant resume hashicorp/precise64 |
-| vagrant reload [vm-name] | 重新加载 Vagrantfile 文件并重启 vagrant 环境 | vagrant reload hashicorp/precise64 |
-| vagrant halt [options] [name\|id] | 停止 vagrant 环境 | vagrant halt hashicorp/precise64 |
-| vagrant destroy [options] [name\|id] | 停止并删除 vagrant 环境 | vagrant destroy hashicorp/precise64 |
-| vagrant ssh [options] [name\|id] [-- extra ssh args] | 通过 ssh 连接到 vagrant 环境 | vagrant ssh hashicorp/precise64 |
-| vagrant status [name\|id] | 查看 vagrant 环境的状态 | vagrant status hashicorp/precise64 |
+| 命令                                                 | 描述                                         | 实例                                                                                                              |
+| ---------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| vagrant -h                                           | 查看有关 vagrant 的帮助                      | vagrant -h                                                                                                        |
+| vagrant version                                      | 查看 vagrant 版本                            | vagrant version                                                                                                   |
+| vagrant init  [options] [name [url]]                 | 在当前目录初始化 Vagrantfile 文件            | vagrant init                                                                                                      |
+| vagrant validate                                     | 验证当前目录下的 Vagrantfile 文件            | vagrant validate                                                                                                  |
+| vagrant box -h                                       | 查看有关 vagrant box 帮助                    | vagrant box -h 以及 vagrant box add -h 等                                                                         |
+| vagrant box add [options] \<name, url, or path\>     | 安装 vagrant box                             | vagrant box add hashicorp/precise64 或 vagrant box add centos/7 c:\CentOS-7-x86_64-Vagrant-1710_01.VirtualBox.box |
+| vagrant box remove \<name\>                          | 移除 vagrant box                             | vagrant box remove hashicorp/precise64                                                                            |
+| vagrant box list [options]                           | 查看 vagrant box 已安装列表                  | vagrant box list                                                                                                  |
+| vagrant up [options] [name\|id]                      | 启动 vagrant 环境                            | vagrant up hashicorp/precise64                                                                                    |
+| vagrant suspend [name\|id]                           | 挂起 vagrant 环境                            | vagrant suspend hashicorp/precise64                                                                               |
+| vagrant resume [vm-name]                             | 恢复 vagrant 环境                            | vagrant resume hashicorp/precise64                                                                                |
+| vagrant reload [vm-name]                             | 重新加载 Vagrantfile 文件并重启 vagrant 环境 | vagrant reload hashicorp/precise64                                                                                |
+| vagrant halt [options] [name\|id]                    | 停止 vagrant 环境                            | vagrant halt hashicorp/precise64                                                                                  |
+| vagrant destroy [options] [name\|id]                 | 停止并删除 vagrant 环境                      | vagrant destroy hashicorp/precise64                                                                               |
+| vagrant ssh [options] [name\|id] [-- extra ssh args] | 通过 ssh 连接到 vagrant 环境                 | vagrant ssh hashicorp/precise64                                                                                   |
+| vagrant status [name\|id]                            | 查看 vagrant 环境的状态                      | vagrant status hashicorp/precise64                                                                                |
 Vagrant 通过 Vagrantfile 来指定从哪个 box 构建环境（当该box不存在时会尝试从网络下载），然后就可以启动、挂起、恢复、重启、停止乃至删除环境，当然也可以通过 ssh 连接到环境。
 
 ### **Vagrant 环境配置**
