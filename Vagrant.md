@@ -45,7 +45,7 @@ Vagrant 会缺省地将当前环境目录同步到虚拟机的 /vagrant 目录�
 #### **自动设置**
 Vagrant 内置支持自动设置，也就是在 vagrant up 时虚拟机会自动按配置安装软件。</br>下面以在 hashicorp/precise64 环境安装 Apache 为例：</br>
 1）在放置 Vagrantfile 文件的目录下创建 bootstrap.sh 脚本
-```
+``` sh
 #!/usr/bin/env bash
 
 apt-get update
@@ -56,7 +56,7 @@ if ! [ -L /var/www ]; then
 fi
 ```
 2）修改 Vagrantfile 文件让 Vagrant 在创建环境时自动运行 bootstrap.sh 脚本
-```
+``` sh
 Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp/precise64"
   config.vm.provision :shell, path: "bootstrap.sh"
@@ -68,7 +68,7 @@ end
 #### **网络**
 ##### 端口转发
 修改 Vagrantfile 文件来进行从宿主机到虚拟机的端口转发，以 访问虚拟机中的 Apache 为例：
-```
+``` sh
 Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp/precise64"
   config.vm.provision :shell, path: "bootstrap.sh"
@@ -83,7 +83,7 @@ Vagrant 也支持通过静态IP地址、桥接等方式连接宿主机和虚拟�
 ## **Vagrant 共享**
 Vagrant 共享让你可以把你创建的环境通过互联网共享给全世界，它将提供一个可以从任何连上因特网的设备都能访问到你的环境的 URL;</br>
 当前版本的 Vagrant 使用 [ngrok](https://ngrok.com/) 来进行共享，使用共享之前请先确认 ngrok 已安装。
-```
+``` 
 $ vagrant share
 Vagrant Share now defaults to using the `ngrok` driver.
 The `classic` driver has been deprecated.
