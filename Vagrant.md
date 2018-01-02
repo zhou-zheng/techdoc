@@ -14,6 +14,10 @@ $ vagrant up --provider=aws
 ## **Vagrant 环境**
 ### **Vagrant 环境操作**
 可以从 [HashiCorp's Vagrant Cloud box catalog](https://app.vagrantup.com/boxes/search) 获取各种 vagrant boxes。
+| 命令 | 描述 | 实例 |
+| - | - | - |
+| test | 测试 | test -h |
+
 | 命令                                                 | 描述                                         | 实例                                                                                                              |
 | ---------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | vagrant -h                                           | 查看有关 vagrant 的帮助                      | vagrant -h                                                                                                        |
