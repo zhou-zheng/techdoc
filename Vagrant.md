@@ -14,6 +14,7 @@ $ vagrant up --provider=aws
 ## **Vagrant 环境**
 ### **Vagrant 环境操作**
 可以从 [HashiCorp's Vagrant Cloud box catalog](https://app.vagrantup.com/boxes/search) 获取各种 vagrant boxes。
+
 | 命令                                                 | 描述                                         | 实例                                                                                                              |
 | ---------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | vagrant -h                                           | 查看有关 vagrant 的帮助                      | vagrant -h                                                                                                        |
@@ -32,7 +33,7 @@ $ vagrant up --provider=aws
 | vagrant destroy [options] [name\|id]                 | 停止并删除 vagrant 环境                      | vagrant destroy hashicorp/precise64                                                                               |
 | vagrant ssh [options] [name\|id] [-- extra ssh args] | 通过 ssh 连接到 vagrant 环境                 | vagrant ssh hashicorp/precise64                                                                                   |
 | vagrant status [name\|id]                            | 查看 vagrant 环境的状态                      | vagrant status hashicorp/precise64                                                                                |
-</br>
+
 Vagrant 通过 Vagrantfile 来指定从哪个 box 构建环境（当该box不存在时会尝试从网络下载），然后就可以启动、挂起、恢复、重启、停止乃至删除环境，当然也可以通过 ssh 连接到环境。
 
 ### **Vagrant 环境配置**
