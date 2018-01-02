@@ -4,7 +4,7 @@ Vagrant 非常适合用于构造开发、运维或设计环境，详情请访问
 ## **Vagrant 安装**
 进入官方网站，根据操作系统下载安装文件，然后进行安装即可。
 ### **Vagrant 提供者**
-Vagrant 依赖于后端虚拟机，现已支持 VirtualBox、VMware、AWS等；</br>
+Vagrant 依赖于后端虚拟机提供者，现已支持 VirtualBox、VMware、AWS等；</br>
 每当安装完毕一种虚拟机提供者，只要带上对应参数运行 vagrant up 就可以启动相应虚拟机下的环境：
 ```
 $ vagrant up --provider=vmware_fusion
