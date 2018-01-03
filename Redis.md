@@ -9,7 +9,8 @@ $ tar xzf redis-4.0.6.tar.gz
 $ cd redis-4.0.6
 $ make
 $ make test
-$ make install
+$ sudo make install
+$ sudo ./utils/install_server.sh
 ```
 在实际操作过程中，可能遇到如下问题：<br />
 1）` /bin/sh: cc: command not found `<br />
@@ -38,4 +39,33 @@ $ make install
 解决方法：` make MALLOC=libc `<br />
 3）make test 时出错 ` You need tcl 8.5 or newer in order to run the Redis test `<br />
 解决方法：` sudo yum -y install tcl `<br />
-4）make install 后，redis 相关命令均被安装到 /usr/local/bin/ 下。
+4）make install 后，redis 相关命令均被安装到 /usr/local/bin/ 下。<br />
+5）通过 Redis 自带的 install_server.sh 脚本配置 Redis 能随系统自启动。<br />
+注意：make命令执行完成编译后，会在src目录下生成6个可执行文件，分别是redis-server、redis-cli、redis-benchmark、redis-check-aof、redis-check-rdb、redis-sentinel。
+
+## **Redis 支持的数据结构**
+- strings
+- hashes
+- lists
+- sets
+- sorted sets
+- bitmaps
+- hyperloglogs
+- geospatial indexes
+
+## **Redis 杂谈**
+用 SET 随机填充一百万个 key：<br />
+` $ redis-benchmark -t set -n 1000000 -r 100000000 `<br />
+用 redis-cli 查看内存占用情况：<br />
+` INFO memory `<br />
+
+
+
+
+
+
+
+
+
+
+ two on-disk storage formats (RDB and AOF) 

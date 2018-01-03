@@ -108,3 +108,35 @@ refer to the documentation:
 ==> default: HTTP URL: http://3283c7f1.ngrok.io
 ==> default:
 ```
+
+## **Vagrant 实用技巧**
+### **Vagrant 快照备份**
+使用 Vagrant 的快照功能可以很方便快速地创建当前虚拟机的一个临时备份状态，在进行重要操作时可以先创建一个快照以便在操作失误后快速恢复。
+
+安装 Vagrant 快照插件：<br />
+` vagrant plugin install vagrant-vbox-snapshot `
+
+运行 Vagrant 快照插件：
+```
+$ vagrant snapshot
+Usage: vagrant snapshot <command> [<args>]
+
+Available subcommands:
+     back
+     delete
+     go
+     list
+     take
+
+For help on any individual command run `vagrant snapshot <command> -h
+```
+- 创建一个快照<br />
+` vagrant snapshot take [vm-name] <SNAPSHOT_NAME> `
+- 查看快照列表<br />
+` vagrant snapshot list `
+- 恢复到上一个最近的快照<br />
+` vagrant snapshot back [vm-name] `
+- 从指定快照恢复<br />
+` vagrant snapshot go [vm-name] <SNAPSHOT_NAME> `
+- 删除一个快照<br />
+` vagrant snapshot delete [vm-name] <SNAPSHOT_NAME> `
