@@ -17,7 +17,7 @@ $ sudo ./utils/install_server.sh
 问题原因：虚拟机系统中缺少gcc<br />
 解决方法：` sudo yum -y install gcc automake autoconf libtool make `<br />
 2）` zmalloc.h:50:31: fatal error: jemalloc/jemalloc.h: No such file or directory `<br />
-问题原因：在README 有这么一段话：
+问题原因：在 README 有这么一段话：
 > Allocator  
 > --------- 
 > Selecting a non-default memory allocator when building Redis is done by setting  
@@ -34,8 +34,8 @@ $ sudo ./utils/install_server.sh
 >  
 > &emsp;&emsp;% make MALLOC=jemalloc
 
-意思是说关于分配器 allocator， 如果有 MALLOC 这个环境变量，会有用这个环境变量去建立Redis。
-而且 libc 并不是默认的分配器，默认的是 jemalloc, 因为 jemalloc 被证明比 libc 有更少的fragmentation problems。但是如果你没有 jemalloc 而只有 libc，当然 make 出错。<br />
+意思是说关于分配器 allocator， 如果有 MALLOC 这个环境变量，会用这个环境变量去建立Redis。
+而且 libc 并不是默认的分配器，默认的是 jemalloc, 因为 jemalloc 被证明比 libc 有更少的 fragmentation problems。但是如果你没有 jemalloc 而只有 libc，当然 make 出错。<br />
 解决方法：` make MALLOC=libc `<br />
 3）make test 时出错 ` You need tcl 8.5 or newer in order to run the Redis test `<br />
 解决方法：` sudo yum -y install tcl `<br />
@@ -54,11 +54,12 @@ $ sudo ./utils/install_server.sh
 - geospatial indexes
 
 ## **Redis 杂谈**
-用 SET 随机填充一百万个 key：<br />
+- 用 SET 随机填充一百万个 key：<br />
 ` $ redis-benchmark -t set -n 1000000 -r 100000000 `<br />
-用 redis-cli 查看内存占用情况：<br />
+- 用 redis-cli 查看内存占用情况：<br />
 ` INFO memory `<br />
-
+- Is using Redis together with an on-disk database a good idea?<br />
+Yes, a common design pattern involves taking very write-heavy small data in Redis (and data you need the Redis data structures to model your problem in an efficient way), and big blobs of data into an SQL or eventually consistent on-disk database. Similarly sometimes Redis is used in order to take in memory another copy of a subset of the same data stored in the on-disk database. This may look similar to caching, but actually is a more advanced model since normally the Redis dataset is updated together with the on-disk DB dataset, and not refreshed on cache misses.
 
 
 
