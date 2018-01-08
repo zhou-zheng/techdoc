@@ -72,3 +72,15 @@ sudo yum -y install policycoreutils-python.x86_64
 ` sudo rm -r /var/log/mongodb `<br />
 ` sudo rm -r /var/lib/mongo `<br />
 
+## **Mongodb 设置**
+1）UNIX ulimit 推荐设置
+- -f (file size): unlimited
+- -t (cpu time): unlimited
+- -v (virtual memory): unlimited
+- -n (open files): 64000
+- -m (memory size): unlimited
+- -u (processes/threads): 64000
+
+可以通过 cat /proc/$(pidof mongod)/limits 来查看
+
+## **Mongodb 入门**
