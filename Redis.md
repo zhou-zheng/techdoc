@@ -126,12 +126,9 @@ Redis 2.2 introduced new bit and byte level operations: GETRANGE, SETRANGE, GETB
 **ALEX ZHOU 注：**<br />
 请参考 [这篇文章](https://stackoverflow.com/questions/20673131/can-someone-explain-redis-setbit-command)<br />
 0x7f 解析如下<br />
-<font face='Courier New'>
-pos: 0 1 2 3 4 5 6 7<br />
-bit: 0 1 1 1 1 1 1 1<br />
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;^<br />
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br />
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MSB&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LSB</font>
+位置：0 1 2 3 4 5 6 7<br />
+取位：0 1 1 1 1 1 1 1<br />
+&emsp;&emsp;&emsp;MSB&emsp;&emsp;&emsp;&emsp;LSB
 - > **Use hashes when possible**<br />
 Small hashes are encoded in a very small space, so you should try representing your data using hashes every time it is possible. For instance if you have objects representing users in a web application, instead of using different keys for name, surname, email, password, use a single hash with all the required fields.
 
