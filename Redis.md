@@ -1052,7 +1052,7 @@ ZREM zset element
 EXEC
 ```
 > If `EXEC` fails (i.e. returns a Null reply) we just repeat the operation.<br />
--> **Redis scripting and transactions**<br />
+- > **Redis scripting and transactions**<br />
 A Redis script is transactional by definition, so everything you can do with a Redis transaction, you can also do with a script, and usually the script will be both simpler and faster.<br />
 This duplication is due to the fact that scripting was introduced in Redis 2.6 while transactions already existed long before. However we are unlikely to remove the support for transactions in the short time because it seems semantically opportune that even without resorting to Redis scripting it is still possible to avoid race conditions, especially since the implementation complexity of Redis transactions is minimal.<br />
 However it is not impossible that in a non immediate future we'll see that the whole user base is just using scripts. If this happens we may deprecate and finally remove transactions.<br />
