@@ -72,8 +72,7 @@ This allows for a very simple but useful pattern: doing a List push operation + 
 `LTRIM mylist 0 999`<br />
 - > **Blocking operations on lists**<br />
 Lists have a special feature that make them suitable to implement queues, and in general as a building block for inter process communication systems: blocking operations.<br />
-Imagine you want to push items into a list with one process, and use a different process in order to actually do some kind of work with those items. This is the usual producer / consumer setup, and can be implemented in the following simple way:
-<br />
+Imagine you want to push items into a list with one process, and use a different process in order to actually do some kind of work with those items. This is the usual producer / consumer setup, and can be implemented in the following simple way:<br />
 &emsp;&emsp; · To push items into the list, producers call LPUSH.<br />
 &emsp;&emsp; · To extract / process items from the list, consumers call RPOP.<br />
 However it is possible that sometimes the list is empty and there is nothing to process, so RPOP just returns NULL. In this case a consumer is forced to wait some time and retry again with RPOP. This is called polling, and is not a good idea in this context because it has several drawbacks:<br />
