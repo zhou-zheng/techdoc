@@ -40,7 +40,25 @@ Vagrant 通过 Vagrantfile 来指定从哪个 box 构建环境（当该box不存
 
 #### **同步文件夹**
 Vagrant 会缺省地将当前环境目录同步到虚拟机的 /vagrant 目录；</br>
-可以通过修改 Vagrantfile 文件中 config.vm.synced_folder 选项来进行目录同步的添加、删除和修改。
+可以通过修改 Vagrantfile 文件中 config.vm.synced_folder 选项来进行目录同步的添加、删除和修改。<br />
+
+ALEX ZHOU 注：<br />
+在 VirtualBox 中使用 Vagrant Cloud 的 centos boxes 时遇到有关同步文件夹的坑，如果想成功使用同步文件夹<br />
+a）使用 centos/7 最小化安装的 base box，同步文件夹例如 /vagrant 目录将无法自动同步，而且虚拟机中创建的文件会自动丢失，但是 Ubuntu base box 不会有此问题。<br />
+&emsp;&emsp; · 宿主机确保安装了 vbguest 插件<br />
+&emsp;&emsp; `vagrant plugin install vagrant-vbguest`<br />
+&emsp;&emsp; · 启动虚拟机，期间会自动安装 VirtualBox Guest Additions<br />
+&emsp;&emsp; `vagrant up`<br />
+&emsp;&emsp; · 关闭虚拟机，再重开虚拟机，观察启动过程中是否已经启动 VirtualBox Guest Additions<br />
+&emsp;&emsp; `vagrant halt`<br />
+&emsp;&emsp; `vagrant up`<br />
+&emsp;&emsp; · 确认无误后再次关闭虚拟机<br />
+&emsp;&emsp; `vagrant halt`<br />
+&emsp;&emsp; · 重新打包成 package.box，当然可以重命名<br />
+&emsp;&emsp; `vagrant package`<br />
+&emsp;&emsp; · 用新生成的 box 文件再次创建虚拟机，这个虚拟机启动后，同步文件夹就不会有问题了。<br />
+b）使用 bento/centos-7.2 的 base box<br />
+无需安装 VirtualBox Guest Addition，即可创建虚拟机并使用同步文件夹功能。<br />
 
 #### **自动设置**
 Vagrant 内置支持自动设置，也就是在 vagrant up 时虚拟机会自动按配置安装软件。</br>下面以在 hashicorp/precise64 环境安装 Apache 为例：</br>
@@ -110,6 +128,38 @@ refer to the documentation:
 ```
 
 ## **Vagrant 实用技巧**
+### **Vagrant VirtualBox Guest Additions 自动下载安装升级**
+以下内容摘自 [Automatically Download and Install VirtualBox Guest Additions in Vagrant](https://dzone.com/articles/automatically-download-and)<br />
+So, are you already using  Vagrant to manage your VirtualBox VMs?<br />
+Then you probably have realized already how annoying is to keep the VBox guest additions up to date in your VMs.<br />
+Don’t worry, you can update them with just one command or automatically on each start using the Vagrant-vbguest plugin.<br />
+- > 安装<br />
+`vagrant plugin install vagrant-vbguest`
+- > 使用<br />
+By default the plugin will check what version of the guest additions is installed in the VM every time it is started with vagrant start. Note that it won’t be checked when resuming a box.<br />
+In any case, it can be disabled in the Vagrantfile<br />
+```
+Vagrant::Config.run do |config|
+  # set auto_update to false, if do NOT want to check the correct additions
+  # version when booting this machine
+  config.vbguest.auto_update = false
+end
+```
+If it detects an outdated version, it will automatically install the matching version from the VirtualBox installation, located at<br />
+&emsp;&emsp; · linux : /usr/share/virtualbox/VBoxGuestAdditions.iso<br />
+&emsp;&emsp; · Mac : /Applications/VirtualBox.app/Contents/MacOS/VBoxGuestAdditions.iso<br />
+&emsp;&emsp; · Windows : %PROGRAMFILES%/Oracle/VirtualBox/VBoxGuestAdditions.iso<br />
+The location can be overridden with the iso_path parameter in your Vagrantfile, and can point to a http server<br />
+```
+Vagrant::Config.run do |config|
+  config.vbguest.iso_path = "#{ENV['HOME']}/Downloads/VBoxGuestAdditions.iso"
+  # or
+  config.vbguest.iso_path = "http://company.server/VirtualBox/$VBOX_VERSION/VBoxGuestAdditions.iso"
+end
+```
+If you have disabled the automatic update, it still easy to manually update the VirtualBox Guest Additions version, just running from the command line<br />
+`vagrant vbguest`
+
 ### **Vagrant 快照备份**
 使用 Vagrant 的快照功能可以很方便快速地创建当前虚拟机的一个临时备份状态，在进行重要操作时可以先创建一个快照以便在操作失误后快速恢复。
 

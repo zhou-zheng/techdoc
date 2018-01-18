@@ -1056,3 +1056,195 @@ EXEC
 A Redis script is transactional by definition, so everything you can do with a Redis transaction, you can also do with a script, and usually the script will be both simpler and faster.<br />
 This duplication is due to the fact that scripting was introduced in Redis 2.6 while transactions already existed long before. However we are unlikely to remove the support for transactions in the short time because it seems semantically opportune that even without resorting to Redis scripting it is still possible to avoid race conditions, especially since the implementation complexity of Redis transactions is minimal.<br />
 However it is not impossible that in a non immediate future we'll see that the whole user base is just using scripts. If this happens we may deprecate and finally remove transactions.<br />
+
+## **Redis 分布式锁**
+Distributed locks are a very useful primitive in many environments where different processes must operate with shared resources in a mutually exclusive way.<br />
+There are a number of libraries and blog posts describing how to implement a DLM (Distributed Lock Manager) with Redis, but every library uses a different approach, and many use a simple approach with lower guarantees compared to what can be achieved with slightly more complex designs.<br />
+This page is an attempt to provide a more canonical algorithm to implement distributed locks with Redis. We propose an algorithm, called `Redlock`, which implements a DLM which we believe to be safer than the vanilla single instance approach. We hope that the community will analyze it, provide feedback, and use it as a starting point for the implementations or more complex or alternative designs.<br />
+- > **Safety and Liveness guarantees**<br />
+We are going to model our design with just three properties that, from our point of view, are the minimum guarantees needed to use distributed locks in an effective way.<br />
+&emsp;&emsp; · Safety property: Mutual exclusion. At any given moment, only one client can hold a lock.<br />
+&emsp;&emsp; · Liveness property A: Deadlock free. Eventually it is always possible to acquire a lock, even if the client that locked a resource crashes or gets partitioned.<br />
+&emsp;&emsp; · Liveness property B: Fault tolerance. As long as the majority of Redis nodes are up, clients are able to acquire and release locks.<br />
+- > **Why failover-based implementations are not enough**<br />
+To understand what we want to improve, let’s analyze the current state of affairs with most Redis-based distributed lock libraries.<br />
+The simplest way to use Redis to lock a resource is to create a key in an instance. The key is usually created with a limited time to live, using the Redis expires feature, so that eventually it will get released (property 2 in our list). When the client needs to release the resource, it deletes the key.<br />
+Superficially this works well, but there is a problem: this is a single point of failure in our architecture. What happens if the Redis master goes down? Well, let’s add a slave! And use it if the master is unavailable. This is unfortunately not viable. By doing so we can’t implement our safety property of mutual exclusion, because Redis replication is asynchronous.<br />
+There is an obvious race condition with this model:<br />
+vClient A acquires the lock in the master.<br />
+&emsp;&emsp; · The master crashes before the write to the key is transmitted to the slave.<br />
+&emsp;&emsp; · The slave gets promoted to master.<br />
+&emsp;&emsp; · Client B acquires the lock to the same resource A already holds a lock for. SAFETY VIOLATION!<br />
+Sometimes it is perfectly fine that under special circumstances, like during a failure, multiple clients can hold the lock at the same time. If this is the case, you can use your replication based solution. Otherwise we suggest to implement the solution described in this document.<br />
+- > **Correct implementation with a single instance**<br />
+Before trying to overcome the limitation of the single instance setup described above, let’s check how to do it correctly in this simple case, since this is actually a viable solution in applications where a race condition from time to time is acceptable, and because locking into a single instance is the foundation we’ll use for the distributed algorithm described here.<br />
+To acquire the lock, the way to go is the following:<br />
+`SET resource_name my_random_value NX PX 30000`<br />
+The command will set the key only if it does not already exist (NX option), with an expire of 30000 milliseconds (PX option). The key is set to a value “myrandomvalue”. This value must be unique across all clients and all lock requests.<br />
+Basically the random value is used in order to release the lock in a safe way, with a script that tells Redis: remove the key only if it exists and the value stored at the key is exactly the one I expect to be. This is accomplished by the following Lua script:<br />
+``` Lua
+if redis.call("get",KEYS[1]) == ARGV[1] then
+    return redis.call("del",KEYS[1])
+else
+    return 0
+end
+```
+> This is important in order to avoid removing a lock that was created by another client. For example a client may acquire the lock, get blocked in some operation for longer than the lock validity time (the time at which the key will expire), and later remove the lock, that was already acquired by some other client. Using just `DEL` is not safe as a client may remove the lock of another client. With the above script instead every lock is “signed” with a random string, so the lock will be removed only if it is still the one that was set by the client trying to remove it.<br />
+What should this random string be? I assume it’s 20 bytes from /dev/urandom, but you can find cheaper ways to make it unique enough for your tasks. For example a safe pick is to seed RC4 with /dev/urandom, and generate a pseudo random stream from that. A simpler solution is to use a combination of unix time with microseconds resolution, concatenating it with a client ID, it is not as safe, but probably up to the task in most environments.<br />
+The time we use as the key time to live, is called the “lock validity time”. It is both the auto release time, and the time the client has in order to perform the operation required before another client may be able to acquire the lock again, without technically violating the mutual exclusion guarantee, which is only limited to a given window of time from the moment the lock is acquired.<br />
+So now we have a good way to acquire and release the lock. The system, reasoning about a non-distributed system composed of a single, always available, instance, is safe. Let’s extend the concept to a distributed system where we don’t have such guarantees.<br />
+- > **The Redlock algorithm**<br />
+未完待续
+
+## **Redis Keyspace Notifications**
+以下内容摘自 [Redis Keyspace Notifications](https://redis.io/topics/notifications)<br />
+- > **Feature overview** <br />
+Keyspace notifications allows clients to subscribe to Pub/Sub channels in order to receive events affecting the Redis data set in some way.<br />
+Examples of the events that is possible to receive are the following:<br />
+&emsp;&emsp; · All the commands affecting a given key.<br />
+&emsp;&emsp; · All the keys receiving an LPUSH operation.<br />
+&emsp;&emsp; · All the keys expiring in the database 0.<br />
+Events are delivered using the normal Pub/Sub layer of Redis, so clients implementing Pub/Sub are able to use this feature without modifications.<br />
+Because Redis Pub/Sub is fire and forget currently there is no way to use this feature if your application demands reliable notification of events, that is, if your Pub/Sub client disconnects, and reconnects later, all the events delivered during the time the client was disconnected are lost.<br />
+In the future there are plans to allow for more reliable delivering of events, but probably this will be addressed at a more general level either bringing reliability to Pub/Sub itself, or allowing Lua scripts to intercept Pub/Sub messages to perform operations like pushing the events into a list.<br />
+- > **Type of events**<br />
+Keyspace notifications are implemented sending two distinct type of events for every operation affecting the Redis data space. For instance a DEL operation targeting the key named mykey in database 0 will trigger the delivering of two messages, exactly equivalent to the following two `PUBLISH` commands:<br />
+`PUBLISH __keyspace@0__:mykey del`<br />
+`PUBLISH __keyevent@0__:del mykey`<br />
+It is easy to see how one channel allows to listen to all the events targeting the key mykey and the other channel allows to obtain information about all the keys that are target of a del operation.<br />
+The first kind of event, with keyspace prefix in the channel is called a Key-space notification, while the second, with the keyevent prefix, is called a Key-event notification.<br />
+In the above example a del event was generated for the key mykey. What happens is that:<br />
+&emsp;&emsp; · The Key-space channel receives as message the name of the event.<br />
+&emsp;&emsp; · The Key-event channel receives as message the name of the key.<br />
+It is possible to enable only one kind of notification in order to deliver just the subset of events we are interested in.<br />
+- > **Configuration**<br />
+By default keyspace events notifications are disabled because while not very sensible the feature uses some CPU power. Notifications are enabled using the notify-keyspace-events of redis.conf or via the `CONFIG SET`.<br />
+Setting the parameter to the empty string disables notifications. In order to enable the feature a non-empty string is used, composed of multiple characters, where every character has a special meaning according to the following table:<br />
+```
+K     Keyspace events, published with __keyspace@<db>__ prefix.
+E     Keyevent events, published with __keyevent@<db>__ prefix.
+g     Generic commands (non-type specific) like DEL, EXPIRE, RENAME, ...
+$     String commands
+l     List commands
+s     Set commands
+h     Hash commands
+z     Sorted set commands
+x     Expired events (events generated every time a key expires)
+e     Evicted events (events generated when a key is evicted for maxmemory)
+A     Alias for g$lshzxe, so that the "AKE" string means all the events.
+```
+At least K or E should be present in the string, otherwise no event will be delivered regardless of the rest of the string.<br />
+For instance to enable just Key-space events for lists, the configuration parameter must be set to Kl, and so forth.<br />
+The string KEA can be used to enable every possible event.<br />
+`CONFIG SET notify-keyspace-events KEA`<br />
+- > **Events generated by different commands**<br />
+Different commands generate different kind of events according to the following list.<br />
+&emsp;&emsp; · `DEL` generates a del event for every deleted key.<br />
+&emsp;&emsp; · `RENAME` generates two events, a rename_from event for the source key, and a rename_to event for the destination key.<br />
+&emsp;&emsp; · `EXPIRE` generates an expire event when an expire is set to the key, or an expired event every time a positive timeout set on a key results into the key being deleted (see `EXPIRE` documentation for more info).<br />
+&emsp;&emsp; · `SORT` generates a sortstore event when `STORE` is used to set a new key. If the resulting list is empty, and the `STORE` option is used, and there was already an existing key with that name, the result is that the key is deleted, so a del event is generated in this condition.<br />
+```
+lpush mylist 3
+lpush mylist 2
+lpush mylist 1
+lpush mylist2 0
+sort mylist limit 0 0 mylist2
+```
+&emsp;&emsp; · `SET` and all its variants (`SETEX`, `SETNX`, `GETSET`) generate set events. However `SETEX` will also generate an expire events.<br />
+&emsp;&emsp; · `MSET` generates a separated set event for every key.<br />
+&emsp;&emsp; · `SETRANGE` generates a setrange event.<br />
+&emsp;&emsp; · `INCR`, `DECR`, `INCRBY`, `DECRBY` commands all generate incrby events.<br />
+&emsp;&emsp; · `INCRBYFLOAT` generates an incrbyfloat events.<br />
+&emsp;&emsp; · `APPEND` generates an append event.<br />
+&emsp;&emsp; · `LPUSH` and `LPUSHX` generates a single lpush event, even in the variadic case.<br />
+&emsp;&emsp; · `RPUSH` and `RPUSHX` generates a single rpush event, even in the variadic case.<br />
+&emsp;&emsp; · `RPOP` generates an rpop event. Additionally a del event is generated if the key is removed because the last element from the list was popped.<br />
+&emsp;&emsp; · `LPOP` generates an lpop event. Additionally a del event is generated if the key is removed because the last element from the list was popped.<br />
+&emsp;&emsp; · `LINSERT` generates an linsert event.<br />
+&emsp;&emsp; · `LSET` generates an lset event.<br />
+&emsp;&emsp; · `LREM` generates an lrem event, and additionally a del event if the resulting list is empty and the key is removed.<br />
+&emsp;&emsp; · `LTRIM` generates an ltrim event, and additionally a del event if the resulting list is empty and the key is removed.<br />
+&emsp;&emsp; · `RPOPLPUSH` and BRPOPLPUSH generate an rpop event and an lpush event. In both cases the order is guaranteed (the lpush event will always be delivered after the rpop event). Additionally a del event will be generated if the resulting list is zero length and the key is removed.<br />
+&emsp;&emsp; · `HSET`, `HSETNX` and `HMSET` all generate a single hset event.<br />
+&emsp;&emsp; · `HINCRBY` generates an hincrby event.<br />
+&emsp;&emsp; · `HINCRBYFLOAT` generates an hincrbyfloat event.<br />
+&emsp;&emsp; · `HDEL` generates a single hdel event, and an additional del event if the resulting hash is empty and the key is removed.<br />
+&emsp;&emsp; · `SADD` generates a single sadd event, even in the variadic case.<br />
+&emsp;&emsp; · `SREM` generates a single srem event, and an additional del event if the resulting set is empty and the key is removed.<br />
+&emsp;&emsp; · `SMOVE` generates an srem event for the source key, and an sadd event for the destination key.<br />
+&emsp;&emsp; · `SPOP` generates an spop event, and an additional del event if the resulting set is empty and the key is removed.<br />
+&emsp;&emsp; · `SINTERSTORE`, `SUNIONSTORE`, `SDIFFSTORE` generate sinterstore, sunionostore, sdiffstore events respectively. In the special case the resulting set is empty, and the key where the result is stored already exists, a del event is generated since the key is removed.<br />
+&emsp;&emsp; · `ZINCR` generates a zincr event.<br />
+&emsp;&emsp; · `ZADD` generates a single zadd event even when multiple elements are added.<br />
+&emsp;&emsp; · `ZREM` generates a single zrem event even when multiple elements are deleted. When the resulting sorted set is empty and the key is generated, an additional del event is generated.<br />
+&emsp;&emsp; · `ZREMBYSCORE` generates a single zrembyscore event. When the resulting sorted set is empty and the key is generated, an additional del event is generated.<br />
+&emsp;&emsp; · `ZREMBYRANK` generates a single zrembyrank event. When the resulting sorted set is empty and the key is generated, an additional del event is generated.<br />
+&emsp;&emsp; · `ZINTERSTORE` and `ZUNIONSTORE` respectively generate zinterstore and zunionstore events. In the special case the resulting sorted set is empty, and the key where the result is stored already exists, a del event is generated since the key is removed.<br />
+&emsp;&emsp; · Every time a key with a time to live associated is removed from the data set because it expired, an expired event is generated.<br />
+&emsp;&emsp; · Every time a key is evicted from the data set in order to free memory as a result of the maxmemory policy, an evicted event is generated.<br />
+**IMPORTANT** all the commands generate events only if the target key is really modified. For instance an `SREM` deleting a non-existing element from a Set will not actually change the value of the key, so no event will be generated.<br />
+- > **Timing of expired events**<br />
+Keys with a time to live associated are expired by Redis in two ways:<br />
+&emsp;&emsp; · When the key is accessed by a command and is found to be expired.<br />
+&emsp;&emsp; · Via a background system that looks for expired keys in background, incrementally, in order to be able to also collect keys that are never accessed.<br />
+The expired events are generated when a key is accessed and is found to be expired by one of the above systems, as a result there are no guarantees that the Redis server will be able to generate the expired event at the time the key time to live reaches the value of zero.<br />
+If no command targets the key constantly, and there are many keys with a TTL associated, there can be a significant delay between the time the key time to live drops to zero, and the time the expired event is generated.<br />
+Basically expired events are generated when the Redis server deletes the key and not when the time to live theoretically reaches the value of zero.<br />
+
+## **Redis 第二索引**
+以下内容摘自 [Secondary indexing with Redis](https://redis.io/topics/indexes#secondary-indexing-with-redis)<br />
+这是一篇很有意思的文章，其中提到的 Representing and querying graphs using an hexastore 以及 Multi dimensional indexes 等内容值得再次深入研读。<br />
+- > **Secondary indexing with Redis**<br />
+Redis is not exactly a key-value store, since values can be complex data structures. However it has an external key-value shell: at API level data is addressed by the key name. It is fair to say that, natively, Redis only offers primary key access. However since Redis is a data structures server, its capabilities can be used for indexing, in order to create secondary indexes of different kinds, including composite (multi-column) indexes.<br />
+This document explains how it is possible to create indexes in Redis using the following data structures:<br />
+&emsp;&emsp; · Sorted sets to create secondary indexes by ID or other numerical fields.<br />
+&emsp;&emsp; · Sorted sets with lexicographical ranges for creating more advanced secondary indexes, composite indexes and graph traversal indexes.<br />
+&emsp;&emsp; · Sets for creating random indexes.<br />
+&emsp;&emsp; · Lists for creating simple iterable indexes and last N items indexes.<br />
+Implementing and maintaining indexes with Redis is an advanced topic, so most users that need to perform complex queries on data should understand if they are better served by a relational store. However often, especially in caching scenarios, there is the explicit need to store indexed data into Redis in order to speedup common queries which require some form of indexing in order to be executed.<br />
+- > **Simple numerical indexes with sorted sets**<br />
+The simplest secondary index you can create with Redis is by using the sorted set data type, which is a data structure representing a set of elements ordered by a floating point number which is the score of each element. Elements are ordered from the smallest to the highest score.<br />
+Since the score is a double precision float, indexes you can build with vanilla sorted sets are limited to things where the indexing field is a number within a given range.<br />
+The two commands to build these kind of indexes are `ZADD` and `ZRANGEBYSCORE` to respectively add items and retrieve items within a specified range.<br />
+By using the `WITHSCORES` option of ZRANGEBYSCORE it is also possible to obtain the scores associated with the returned elements.<br />
+The `ZCOUNT` command can be used in order to retrieve the number of elements within a given range, without actually fetching the elements, which is also useful, especially given the fact the operation is executed in logarithmic time regardless of the size of the range.<br />
+Ranges can be inclusive or exclusive, please refer to the `ZRANGEBYSCORE` command documentation for more information.
+Note: Using the `ZREVRANGEBYSCORE` it is possible to query a range in reversed order, which is often useful when data is indexed in a given direction (ascending or descending) but we want to retrieve information the other way around.<br />
+- > **Using objects IDs as associated values**<br />
+In the above example we associated names to ages. However in general we may want to index some field of an object which is stored elsewhere. Instead of using the sorted set value directly to store the data associated with the indexed field, it is possible to store just the ID of the object.<br />
+In the next examples we'll almost always use IDs as values associated with the index, since this is usually the more sounding design, with a few exceptions.<br />
+- > **Updating simple sorted set indexes**<br />
+Often we index things which change over time. In the above example, the age of the user changes every year. In such a case it would make sense to use the birth date as index instead of the age itself, but there are other cases where we simple want some field to change from time to time, and the index to reflect this change.<br />
+The `ZADD` command makes updating simple indexes a very trivial operation since re-adding back an element with a different score and the same value will simply update the score and move the element at the right position.<br />
+The operation may be wrapped in a `MULTI/EXEC` transaction in order to make sure both fields are updated or none.<br />
+- > **Turning multi dimensional data into linear data**
+Indexes created with sorted sets are able to index only a single numerical value. Because of this you may think it is impossible to index something which has multiple dimensions using this kind of indexes, but actually this is not always true. If you can efficiently represent something multi-dimensional in a linear way, they it is often possible to use a simple sorted set for indexing.<br />
+For example the Redis geo indexing API uses a sorted set to index places by latitude and longitude using a technique called Geo hash. The sorted set score represents alternating bits of longitude and latitude, so that we map the linear score of a sorted set to many small squares in the earth surface. By doing an 8+1 style center plus neighborhoods search it is possible to retrieve elements by radius.<br />
+- > **Limits of the score**<br />
+Sorted set elements scores are double precision integers. It means that they can represent different decimal or integer values with different errors, because they use an exponential representation internally. However what is interesting for indexing purposes is that the score is always able to represent without any error numbers between -9007199254740992 and 9007199254740992, which is -/+ 2^53.<br />
+When representing much larger numbers, you need a different form of indexing that is able to index numbers at any precision, called a lexicographical index.<br />
+
+### **Lexicographical indexes**
+Redis sorted sets have an interesting property. When elements are added with the same score, they are sorted lexicographically, comparing the strings as binary data with the memcmp() function.<br />
+There are commands such as `ZRANGEBYLEX` and `ZLEXCOUNT` that are able to query and count ranges in a lexicographically fashion, assuming they are used with sorted sets where all the elements have the same score.<br />
+This Redis feature is basically equivalent to a b-tree data structure which is often used in order to implement indexes with traditional databases. As you can guess, because of this, it is possible to use this Redis data structure in order to implement pretty fancy indexes.<br />
+Note that in the range queries we prefixed the min and max elements identifying the range with the special characters [ and (. This prefixes are mandatory, and they specify if the elements of the range are inclusive or exclusive. So the range [a (b means give me all the elements lexicographically between a inclusive and b exclusive, which are all the elements starting with a.<br />
+There are also two more special characters indicating the infinitely negative string and the infinitely positive string, which are - and +.<br />
+- **A first example: completion**<br />
+`ZRANGEBYLEX myindex "[bit" "[bit\xff"`<br />
+An interesting application of indexing is completion. Completion is what happens when you start typing your query into a search engine: the user interface will anticipate what you are likely typing, providing common queries that start with the same characters.<br />
+A naive approach to completion is to just add every single query we get from the user into the index.<br />
+Basically we create a range using the string the user is typing right now as start, and the same string plus a trailing byte set to 255, which is \xff in the example, as the end of the range. This way we get all the strings that start for the string the user is typing.<br />
+**REMEMBER to use " in the query.**<br />
+- **Adding frequency into the mix**<br />
+The above approach is a bit naive, because all the user searches are the same in this way. In a real system we want to complete strings according to their frequency: very popular searches will be proposed with an higher probability compared to search strings typed very rarely.<br />
+In order to implement something which depends on the frequency, and at the same time automatically adapts to future inputs, by purging searches that are no longer popular, we can use a very simple streaming algorithm.<br />
+To start, we modify our index in order to store not just the search term, but also the frequency the term is associated with. So instead of just adding banana we add banana:1, where 1 is the frequency.<br />
+`ZADD myindex 0 banana:1`<br />
+We also need logic in order to increment the index if the search term already exists in the index, so what we'll actually do is something like that:<br />
+`ZRANGEBYLEX myindex "[banana:" + LIMIT 0 1`<br />
+`1) "banana:1"`<br />
+This will return the single entry of banana if it exists. Then we can increment the associated frequency and send the following two commands:<br />
+`ZREM myindex 0 banana:1`<br />
+`ZADD myindex 0 banana:2`<br />
+Note that because it is possible that there are concurrent updates, the above three commands should be send via a Lua script instead, so that the Lua script will atomically get the old count and re-add the item with incremented score.<br />
