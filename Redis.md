@@ -259,34 +259,562 @@ Every hash, list, set, and sorted set, can hold 2<sup>32</sup> elements.<br />
 In other words your limit is likely the available memory in your system.<br />
 
 ## **Redis 命令**
-### **Expire**
-- > **Pattern: Navigation session**<br />
-Imagine you have a web service and you are interested in the latest N pages recently visited by your users, such that each adjacent page view was not performed more than 60 seconds after the previous. Conceptually you may consider this set of page views as a Navigation session of your user, that may contain interesting information about what kind of products he or she is looking for currently, so that you can recommend related products.<br />
-You can easily model this pattern in Redis using the following strategy: every time the user does a page view you call the following commands:<br />
-`MULTI`<br />
-`RPUSH pagewviews.user:<userid> http://.....`<br />
-`EXPIRE pagewviews.user:<userid> 60`<br />
-`EXEC`<br />
-If the user will be idle more than 60 seconds, the key will be deleted and only subsequent page views that have less than 60 seconds of difference will be recorded.<br />
-This pattern is easily modified to use counters using INCR instead of lists using `RPUSH`.<br />
-- > **Expire accuracy**<br />
-In Redis 2.4 the expire might not be pin-point accurate, and it could be between zero to one seconds out.<br />
-Since Redis 2.6 the expire error is from 0 to 1 milliseconds.<br />
-- > **Expires and persistence**<br />
-Keys expiring information is stored as absolute Unix timestamps (in milliseconds in case of Redis version 2.6 or greater). This means that the time is flowing even when the Redis instance is not active.<br />
-For expires to work well, the computer time must be taken stable. If you move an RDB file from two computers with a big desync in their clocks, funny things may happen (like all the keys loaded to be expired at loading time).<br />
-Even running instances will always check the computer clock, so for instance if you set a key with a time to live of 1000 seconds, and then set your computer time 2000 seconds in the future, the key will be expired immediately, instead of lasting for 1000 seconds.<br />
-- > **How Redis expires keys**<br />
-Redis keys are expired in two ways: a passive way, and an active way.<br />
-A key is passively expired simply when some client tries to access it, and the key is found to be timed out.<br />
-Of course this is not enough as there are expired keys that will never be accessed again. These keys should be expired anyway, so periodically Redis tests a few keys at random among keys with an expire set. All the keys that are already expired are deleted from the keyspace.<br />
-Specifically this is what Redis does 10 times per second:<br />
-&emsp;&emsp; · Test 20 random keys from the set of keys with an associated expire.<br />
-&emsp;&emsp; · Delete all the keys found expired.<br />
-&emsp;&emsp; · If more than 25% of keys were expired, start again from step 1.<br />
-- > **How expires are handled in the replication link and AOF file**<br />
-In order to obtain a correct behavior without sacrificing consistency, when a key expires, a `DEL` operation is synthesized in both the AOF file and gains all the attached slaves. This way the expiration process is centralized in the master instance, and there is no chance of consistency errors.<br />
-However while the slaves connected to a master will not expire keys independently (but will wait for the `DEL` coming from the master), they'll still take the full state of the expires existing in the dataset, so when a slave is elected to a master it will be able to expire the keys independently, fully acting as a master.<br />
+### **APPEND**
+APPEND key value<br />
+O(1)<br />
+Pattern: Time series<br />
+### **AUTH**
+Note: because of the high performance nature of Redis, it is possible to try a lot of passwords in parallel in very short time, so make sure to generate a strong and very long password so that this attack is infeasible.<br />
+### **BGREWRITEAOF**
+### **BGSAVE**
+Save the DB in background. A client may be able to check if the operation succeeded using the `LASTSAVE` command.<br />
+### **BITCOUNT**
+BITCOUNT key [start end]<br />
+O(N)<br />
+Pattern: real-time metrics using bitmaps<br />
+[REDIS BITMAPS – FAST, EASY, REALTIME METRICS](http://blog.getspool.com/2011/11/29/fast-easy-realtime-metrics-using-redis-bitmaps/) 非常值得作为指标统计方案的参考。<br />
+### **BITFIELD**
+BITFIELD key [GET type offset] [SET type offset value] [INCRBY type offset increment] [OVERFLOW WRAP|SAT|FAIL]<br />
+O(1)<br />
+比较复杂琐碎，建议有时间重新研读。<br />
+### **BITOP**
+BITOP operation destkey key [key ...]<br />
+O(N)<br />
+The BITOP command supports four bitwise operations: AND, OR, XOR and NOT.<br />
+Pattern: real time metrics using bitmaps<br />
+BITOP is a potentially slow command as it runs in O(N) time. Care should be taken when running it against long input strings.<br />
+For real-time metrics and statistics involving large inputs a good approach is to use a slave (with read-only option disabled) where the bit-wise operations are performed to avoid blocking the master instance.<br />
+### **BITPOS**
+BITPOS key bit [start][end]<br />
+O(N)<br />
+The range is interpreted as a range of bytes and not a range of bits, so start=0 and end=2 means to look at the first three bytes.<br />
+Note that bit positions are returned always as absolute values starting from bit zero even when start and end are used to specify a range.<br />
+### **BLPOP**
+BLPOP key [key ...] timeout<br />
+O(1)<br />
+An element is popped from the head of **the first list that is non-empty**, with the given keys being checked in the order that they are given.<br />
+Pattern: Event notification<br />
+### **BRPOP**
+BRPOP key [key ...] timeout<br />
+O(1)<br />
+See `BLPOP` for the exact semantics.<br />
+### **BRPOPLPUSH**
+BRPOPLPUSH source destination timeout<br />
+O(1)<br />
+See `RPOPLPUSH` for more information.<br />
+Pattern: Reliable queue<br />
+Pattern: Circular list<br />
+### **CLIENT KILL**
+CLIENT KILL [ip:port] [ID client-id] [TYPE normal|master|slave|pubsub] [ADDR ip:port] [SKIPME yes/no]<br />
+O(N)<br />
+### **CLIENT LIST**
+CLIENT LIST<br />
+O(N)<br />
+### **CLIENT GETNAME**
+CLIENT GETNAME<br />
+O(1)<br />
+### **CLIENT PAUSE**
+CLIENT PAUSE timeout<br />
+O(1)<br />
+This command is useful as it makes able to switch clients from a Redis instance to another one in a controlled way. For example during an instance upgrade the system administrator could do the following:<br />
+&emsp;&emsp; · Pause the clients using CLIENT PAUSE<br />
+&emsp;&emsp; · Wait a few seconds to make sure the slaves processed the latest replication stream from the master.<br />
+&emsp;&emsp; · Turn one of the slaves into a master.<br />
+&emsp;&emsp; · Reconfigure clients to connect with the new master.<br />
+### **CLIENT REPLY**
+CLIENT REPLY ON|OFF|SKIP<br />
+O(1)<br />
+### **CLIENT SETNAME**
+CLIENT SETNAME connection-name<br />
+O(1)<br />
+### **CLUSTER ...**
+### **COMMAND**
+COMMAND<br />
+O(N)<br />
+### **COMMAND COUNT**
+COMMAND COUNT<br />
+O(1)<br />
+### **COMMAND GETKEYS**
+COMMAND GETKEYS<br />
+O(N)<br />
+### **COMMAND INFO**
+COMMAND INFO command-name [command-name ...]<br />
+O(N)<br />
+### **CONFIG GET**
+CONFIG GET parameter<br />
+### **CONFIG REWRITE**
+CONFIG REWRITE<br />
+### **CONFIG SET**
+CONFIG SET parameter value<br />
+### **CONFIG RESETSTAT**
+CONFIG RESETSTAT<br />
+O(1)<br />
+### **DBSIZE**
+DBSIZE<br />
+### **DEBUG OBJECT**
+DEBUG OBJECT key<br />
+DEBUG OBJECT is a debugging command that should not be used by clients. Check the `OBJECT` command instead.<br />
+### **DEBUG SEGFAULT**
+DEBUG SEGFAULT<br />
+`DEBUG SEGFAULT` performs an invalid memory access that crashes Redis. It is used to simulate bugs during the development.<br />
+### **DECR**
+DECR key<br />
+O(1)<br />
+### **DECRBY**
+DECRBY key decrement<br />
+O(1)<br />
+### **DEL**
+DEL key [key ...]<br />
+O(N)<br />
+### **DISCARD**
+DISCARD<br />
+### **DUMP**
+DUMP key<br />
+O(1)+O(N*M)
+### **ECHO**
+ECHO message<br />
+### **EVAL**
+EVAL script numkeys key [key ...] arg [arg ...]<br />
+### **EVALSHA**
+EVALSHA sha1 numkeys key [key ...] arg [arg ...]<br />
+`SCRIPT LOAD`<br />
+### **EXEC**
+EXEC<br />
+### **EXISTS**
+EXISTS key [key ...]<br />
+O(1)<br />
+### **EXPIRE**
+EXPIRE key seconds<br />
+O(1)<br />
+Pattern: Navigation session
+### **EXPIREAT**
+EXPIREAT key timestamp<br />
+O(1)<br />
+### **FLUSHALL**
+FLUSHALL [ASYNC]<br />
+O(N)<br />
+An ASYNC option was added to `FLUSHALL` and `FLUSHDB` of Redis 4.0.0 or greater  in order to let the entire dataset or a single database to be freed asynchronously.<br />
+### **FLUSHDB**
+FLUSHDB [ASYNC]<br />
+O(N)<br />
+### **GEOADD**
+GEOADD key longitude latitude member [longitude latitude member ...]<br />
+O(log(N))<br />
+### **GEOHASH**
+GEOHASH key member [member ...]<br />
+O(log(N))<br />
+### **GEODIST**
+GEODIST key member1 member2 [unit]<br />
+O(log(N))<br />
+### **GEORADIUS**
+GEORADIUS key longitude latitude radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key]<br />
+O(N+log(M))<br />
+### **GEORADIUSBYMEMBER**
+GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key]<br />
+O(N+log(M))<br />
+### **GET**
+GET key<br />
+O(1)<br />
+`GET` only handles string values.<br />
+### **GETBIT**
+GETBIT key offset<br />
+O(1)<br />
+### **GETRANGE**
+GETRANGE key start end<br />
+O(N)<br />
+### **GETSET**
+GETSET key value<br />
+O(1)<br />
+Design Pattern: `GETSET` can be used together with INCR for counting with atomic reset.<br />
+### **HDEL**
+HDEL key field [field ...]<br />
+O(N)<br />
+### **HEXISTS**
+HEXISTS key field<br />
+O(1)<br />
+### **HGET**
+HGET key field<br />
+O(1)<br />
+### **HGETALL**
+HGETALL key<br />
+O(N)<br />
+### **HINCRBY**
+HINCRBY key field increment<br />
+O(1)<br />
+### **HINCRBYFLOAT**
+HINCRBYFLOAT key field increment<br />
+O(1)<br />
+### **HKEYS**
+HKEYS key<br />
+O(N)<br />
+### **HLEN**
+HLEN key<br />
+O(1)<br />
+### **HMGET**
+HMGET key field [field ...]<br />
+O(N)<br />
+### **HMSET**
+HMSET key field value [field value ...]<br />
+O(N)<br />
+### **HSET**
+HSET key field value<br />
+O(1)<br />
+### **HSETNX**
+HSETNX key field value<br />
+O(1)<br />
+### **HSTRLEN**
+HSTRLEN key field<br />
+O(1)<br />
+### **HVALS**
+HVALS key<br />
+O(N)<br />
+### **INCR**
+INCR key<br />
+O(1)<br />
+Pattern: Counter<br />
+Pattern: **Rate limiter**<br />
+### **INCRBY**
+ICNRBY key increment<br />
+O(1)<br />
+### **INCRBYFLOAT**
+INCRBYFLOAT key increment<br />
+O(1)<br />
+### **INFO**
+INFO [section]<br />
+### **KEYS**
+KEYS pattern<br />
+O(N) <br />
+Warning: consider `KEYS` as a command that should only be used in production environments with extreme care.<br />
+### **LASTSAVE**
+LASTSAVE<br />
+### **LINDEX**
+LINDEX key index<br />
+O(N)<br />
+### **LINSERT**
+LINSERT key BEFORE|AFTER pivot value<br />
+O(N)<br />
+### **LLEN**
+LLEN key<br />
+O(1)<br />
+### **LPOP**
+LPOP key<br />
+O(1)<br />
+### **LPUSH**
+LPUSH key value [value ...]<br />
+O(1)<br />
+### **LPUSHX**
+LPUSHX key value [value ...]<br />
+O(1)<br />
+### **LRANGE**
+LRANGE key start stop<br />
+O(S+N)<br />
+### **LREM**
+LREM key count value<br />
+O(N)<br />
+### **LSET**
+LSET key index value<br />
+O(N)<br />
+### **LTRIM**
+LTRIM key start stop<br />
+O(N)<br />
+### **MGET**
+MGET key [key ...]<br />
+O(N)<br />
+### **MIGRATE**
+MIGRATE host port key|"" destination-db timeout [COPY] [REPLACE] [KEYS key [key ...]]<br />
+O(N)<br />
+### **MONITOR**
+MONITOR<br />
+### **MOVE**
+MOVE key db<br />
+O(1)<br />
+### **MSET**
+MSET key value [key value ...]<br />
+O(N)<br />
+### **MSETNX**
+MSETNX key value [key value ...]<br />
+O(N)<br />
+### **MULTI**
+MULTI<br />
+### **OBJECT**
+OBJECT subcommand [arguments [arguments ...]]<br />
+O(1)<br />
+### **PERSIST**
+PERSIST key<br />
+O(1)<br />
+### **PEXPIRE**
+PEXPIRE key milliseconds<br />
+O(1)<br />
+### **PEXPIREAT**
+PEXPIREAT key milliseconds-timestamp<br />
+O(1)<br />
+### **PFADD**
+PFADD key element [element ...]<br />
+O(1)<br />
+### **PFCOUNT**
+PFCOUNT key [key ...]<br />
+O(N)<br />
+### **PFMERGE**
+PFMERGE destkey sourcekey [sourcekey ...]<br />
+O(N)<br />
+### **PING**
+PING [message]<br />
+### **PSETEX**
+PSETEX key milliseconds value<br />
+O(1)<br />
+### **PSUBSCRIBE**
+PSUBSCRIBE pattern [pattern ...]<br />
+O(N)<br />
+### **PUBSUB**
+PUBSUB subcommand [argument [argument ...]]<br />
+O(N)<br />
+### **PTTL**
+PTTL key<br />
+O(1)<br />
+### **PUBLISH**
+PUBLISH channel message
+O(N+M)<br />
+### **PUNSUBSCRIBE**
+PUNSUBSCRIBE [pattern [pattern ...]]<br />
+O(N+M)<br />
+### **QUIT**
+QUIT<br />
+### **RANDOMKEY**
+RANDOMKEY<br />
+O(1)<br />
+### **READONLY**
+READONLY<br />
+O(1)<br />
+### **READWRITE**
+READWRITE<br />
+O(1)<br />
+### **RENAME**
+RENAME key newkey<br />
+O(1)<br />
+### **RENAMENX**
+RENAMENX key newkey<br />
+O(1)<br />
+### **RESTORE**
+RESTORE key ttl serialized-value [REPLACE]<br />
+O(1)+O(N*M)<br />
+### **ROLE**
+ROLE<br />
+### **RPOP**
+RPOP key<br />
+O(1)<br />
+### **RPOPLPUSH**
+RPOPLPUSH source destination<br />
+O(1)<br />
+Pattern: Reliable queue<br />
+Pattern: **Circular list**<br />
+### **RPUSH**
+RPUSH key value [value ...]<br />
+O(1)<br />
+### **RPUSHX**
+RPUSHX key value<br />
+O(1)<br />
+### **SADD**
+SADD key member [member ...]<br />
+O(1)<br />
+### **SAVE**
+SAVE<br />
+### **SCARD**
+SCARD key<br />
+O(1)<br />
+### **SCRIPT DEBUG**
+SCRIPT DEBUG YES|SYNC|NO<br />
+O(1)<br />
+[Redis Lua debugger](https://redis.io/topics/ldb)
+### **SCRIPT EXISTS**
+SCRIPT EXISTS sha1 [sha1 ...]<br />
+O(N)<br />
+### **SCRIPT FLUSH**
+SCRIPT FLUSH<br />
+O(N)<br />
+### **SCRIPT KILL**
+SCRIPT KILL<br />
+O(1)<br />
+If the script already performed write operations it **can not** be killed in this way because it would violate Lua script atomicity contract. In such a case only `SHUTDOWN NOSAVE` is able to kill the script.<br />
+### **SCRIPT LOAD**
+SCRIPT LOAD script<br />
+O(N)<br />
+### **SDIFF**
+SDIFF key [key ...]<br />
+O(N)<br />
+### **SDIFFSTORE**
+SDIFFSTORE destination key [key ...]<br />
+O(N)<br />
+### **SELECT**
+SELECT index<br />
+When using Redis Cluster, the `SELECT` command **cannot** be used, since Redis Cluster only supports database zero.<br />
+### **SET**
+SET key value [EX seconds] [PX milliseconds] [NX|XX]<br />
+O(1)<br />
+Patterns: The command `SET resource-name anystring NX EX max-lock-time` is a simple way to implement a locking system with Redis.<br />
+### **SETBIT**
+SETBIT key offset value<br />
+O(1)<br />
+### **SETEX**
+SETEX key seconds value<br />
+O(1)<br />
+### **SETNX**
+SETNX key value<br />
+O(1)<br />
+Design pattern: Locking with `SETNX`<br />
+### **SETRANGE**
+SETRANGE key offset value<br />
+O(1)<br />
+Patterns: Use redis as a linear array.<br />
+### **SHUTDOWN**
+SHUTDOWN [NOSAVE|SAVE]<br />
+`SHUTDOWN SAVE` will force a DB saving operation **even if** no save points are configured.<br />
+There are conditions when we want just to terminate a Redis instance **ASAP**, regardless of what its content is. In such a case, the right combination of commands is to send a `CONFIG appendonly no` followed by a `SHUTDOWN NOSAVE`.<br />
+### **SINTER**
+SINTER key [key ...]<br />
+O(N*M)<br />
+### **SINTERSTORE**
+SINTERSTORE destination key [key ...]<br />
+O(N*M)<br />
+### **SISMEMBER**
+SISMEMBER key member<br />
+O(1)<br />
+### **SLAVEOF**
+SLAVEOF host port<br />
+### **SLOWLOG**
+SLOWLOG subcommand [argument]<br />
+Two parameters: `slowlog-log-slower-than`, `slowlog-max-len`<br />
+subcommand: GET LEN RESET<br />
+### **SMEMBERS**
+SMEMBERS key<br />
+O(N)<br />
+### **SMOVE**
+SMOVE source destination member<br />
+O(1)<br />
+### **SORT**
+SORT key [BY pattern] [LIMIT offset count] [GET pattern [GET pattern ...]] [ASC|DESC] [ALPHA] [STORE destination]<br />
+O(N+M*log(M))<br />
+An interesting pattern using `SORT` ... `STORE` consists in associating an `EXPIRE` timeout to the resulting key so that in applications where the result of a `SORT` operation can be cached for some time. Other clients will use the cached list instead of calling `SORT` for every request. When the key will timeout, an updated version of the cache can be created by calling `SORT` ... `STORE` again.<br />
+It is possible to use BY and GET options against hash fields with the following syntax:<br />
+`SORT mylist BY weight_*->fieldname GET object_*->fieldname`<br />
+### **SPOP**
+SPOP key [count]<br />
+O(1)<br />
+### **SRANDMEMBER**
+SRANDMEMBER key [count]<br />
+O(1)/O(N)<br />
+### **SREM**
+SREM key member [member ...]<br />
+O(N)<br />
+### **STRLEN**
+STRLEN key<br />
+O(1)<br />
+### **SUBSCRIBE**
+SUBSCRIBE channel [channel ...]<br />
+O(N)<br />
+### **SUNION**
+SUNION key [key ...]<br />
+O(N)<br />
+### **SUNIONSTORE**
+SUNIONSTORE destination key [key ...]<br />
+O(N)<br />
+### **SWAPDB**
+SWAPDB index index<br />
+### **SYNC**
+SYNC<br />
+### **TIME**
+TIME<br />
+O(1)<br />
+### **TOUCH**
+TOUCH key [key ...]<br />
+O(N)<br />
+### **TTL**
+TTL key<br />
+O(1)<br />
+### **TYPE**
+TYPE key<br />
+O(1)<br />
+### **UNSUBSCRIBE**
+UNSUBSCRIBE [channel [channel ...]]<br />
+O(N)<br />
+### **UNLINK**
+UNLINK key [key ...]<br />
+O(1)/O(N)<br />
+### **UNWATCH**
+UNWATCH<br />
+O(1)<br />
+### **WAIT**
+WAIT numslaves timeout<br />
+O(1)<br />
+### **WATCH**
+WATCH key [key ...]<br />
+O(1)<br />
+### **ZADD**
+ZADD key [NX|XX] [CH] [INCR] score member [score member ...]<br />
+O(log(N))<br />
+### **ZCARD**
+ZCARD key<br />
+O(1)<br />
+### **ZCOUNT**
+ZCOUNT key min max<br />
+O(log(N))<br />
+### **ZINCRBY**
+ZINCRBY key increment member<br />
+O(log(N))<br />
+### **ZINTERSTORE**
+ZINTERSTORE destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]<br />
+O(N*K)+O(M*log(M))<br />
+### **ZLEXCOUNT**
+ZLEXCOUNT key min max<br />
+O(log(N))<br />
+### **ZRANGE**
+ZRANGE key start stop [WITHSCORES]<br />
+O(log(N)+M)<br />
+### **ZRANGEBYLEX**
+ZRANGEBYLEX key min max [LIMIT offset count]<br />
+O(log(N)+M)<br />
+### **ZREVRANGEBYLEX**
+ZREVRANGEBYLEX key max min [LIMIT offset count]<br />
+O(log(N)+M)<br />
+### **ZRANGEBYSCORE**
+ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]<br />
+O(log(N)+M)<br />
+Pattern: weighted random selection of an element<br />
+### **ZRANK**
+ZRANK key member<br />
+O(log(N))<br />
+### **ZREM**
+ZREM key member [member ...]<br />
+O(M*log(N))<br />
+### **ZREMRANGEBYLEX**
+ZREMRANGEBYLEX key min max<br />
+O(log(N)+M)<br />
+### **ZREMRANGEBYRANK**
+ZREMRANGEBYRANK key start stop<br />
+O(log(N)+M)<br />
+### **ZREVRANK**
+ZREVRANK key member<br />
+O(log(N))<br />
+### **ZSCORE**
+ZSCORE key member<br />
+O(1)<br />
+### **ZUNIONSTORE**
+ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]<br />
+O(N)+O(M log(M))<br />
+### **SCAN**
+SCAN cursor [MATCH pattern] [COUNT count]<br />
+O(1)/O(N)<br />
+### **SSCAN**
+SSCAN key cursor [MATCH pattern] [COUNT count]<br />
+O(1)/O(N)<br />
+### **HSCAN**
+HSCAN key cursor [MATCH pattern] [COUNT count]<br />
+O(1)/O(N)<br />
+### **ZSCAN**
+ZSCAN key cursor [MATCH pattern] [COUNT count]<br />
+O(1)/O(N)<br />
+
+
+
 
 ## **Redis 分区**
 以下内容摘自 [Redis Partitioning](https://redis.io/topics/partitioning)<br />
