@@ -190,3 +190,21 @@ For help on any individual command run `vagrant snapshot <command> -h
 ` vagrant snapshot go [vm-name] <SNAPSHOT_NAME> `
 - 删除一个快照<br />
 ` vagrant snapshot delete [vm-name] <SNAPSHOT_NAME> `
+
+### **Vagrant 的 XShell/PuTTY 连接**
+1. 在命令行中进入 vagrant 实例所在目录，运行
+```
+F:\centos_vbga>vagrant ssh-config
+Host default
+  HostName 127.0.0.1
+  User vagrant
+  Port 2222
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile C:/Users/Alex/.vagrant.d/boxes/centos-VAGRANTSLASH-7-VAGRANTSLASH-vbga/0/virtualbox/vagrant_private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+```
+2. 在 XShell/PuTTY 的连接配置中使用 IdentityFile 的 vagrant_private_key
+3. 一般都是连接到 127.0.0.1:2222
