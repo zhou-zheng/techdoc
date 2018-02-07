@@ -2462,6 +2462,123 @@ Just check utils/create-cluster directory in the Redis distribution. There is a 
 Reply to yes in step 2 when the redis-trib utility wants you to accept the cluster layout.<br />
 You can now interact with the cluster, the first node will start at port 30001 by default. When you are done, stop the cluster with:<br />
 1. create-cluster stop.<br />
+Please read the README inside this directory for more information on how to run the script.<br />
 ALEX 注：<br />
 create-cluster clean-logs<br />
 create-cluster clean<br />
+#### **Playing with the cluster**
+The following is an example of interaction using the redis-cli command line utility:
+```
+$ redis-cli -c -p 7000
+redis 127.0.0.1:7000> set foo bar
+-> Redirected to slot [12182] located at 127.0.0.1:7002
+OK
+redis 127.0.0.1:7002> set hello world
+-> Redirected to slot [866] located at 127.0.0.1:7000
+OK
+redis 127.0.0.1:7000> get foo
+-> Redirected to slot [12182] located at 127.0.0.1:7002
+"bar"
+redis 127.0.0.1:7000> get hello
+-> Redirected to slot [866] located at 127.0.0.1:7000
+"world"
+```
+#### **Resharding the cluster**
+Resharding basically means to move hash slots from a set of nodes to another set of nodes, and like cluster creation it is accomplished using the redis-trib utility.<br />
+To start a resharding just type:<br />
+`./redis-trib.rb reshard 127.0.0.1:7000`<br />
+I can always find the ID of a node with the following command if I need:<br />
+```
+$ redis-cli -p 7000 cluster nodes | grep myself
+97a3a64667477371c4479320d683e4c8db5858b1 :0 myself,master - 0 0 0 connected 0-5460
+```
+At the end of the resharding, you can test the health of the cluster with the following command:<br />
+`./redis-trib.rb check 127.0.0.1:7000`<br />
+#### **Scripting a resharding operation**
+Reshardings can be performed automatically without the need to manually enter the parameters in an interactive way. This is possible using a command line like the following:<br />
+`./redis-trib.rb reshard --from <node-id> --to <node-id> --slots <number of slots> --yes <host>:<port>`<br />
+#### **Testing the failover**
+Let's crash node 7002 with the `DEBUG SEGFAULT` command:<br />
+```
+$ redis-cli -p 7002 debug segfault
+Error: Server closed the connection
+```
+We can check what is the cluster setup.<br />
+```
+$ redis-cli -p 7000 cluster nodes
+3fc783611028b1707fd65345e763befb36454d73 127.0.0.1:7004 slave 3e3a6cb0d9a9a87168e266b0a0b24026c0aae3f0 0 1385503418521 0 connected
+a211e242fc6b22a9427fed61285e85892fa04e08 127.0.0.1:7003 slave 97a3a64667477371c4479320d683e4c8db5858b1 0 1385503419023 0 connected
+97a3a64667477371c4479320d683e4c8db5858b1 :0 myself,master - 0 0 0 connected 0-5959 10922-11422
+3c3a0c74aae0b56170ccb03a76b60cfe7dc1912e 127.0.0.1:7005 master - 0 1385503419023 3 connected 11423-16383
+3e3a6cb0d9a9a87168e266b0a0b24026c0aae3f0 127.0.0.1:7001 master - 0 1385503417005 0 connected 5960-10921
+2938205e12de373867bf38f1ca29d31d0ddb3e46 127.0.0.1:7002 slave 3c3a0c74aae0b56170ccb03a76b60cfe7dc1912e 0 1385503418016 3 connected
+```
+The output of the CLUSTER NODES command may look intimidating, but it is actually pretty simple, and is composed of the following tokens:<br />
+- Node ID<br />
+- ip:port<br />
+- flags: master, slave, myself, fail, ...<br />
+- if it is a slave, the Node ID of the master<br />
+- Time of the last pending PING still waiting for a reply.<br />
+- Time of the last PONG received.<br />
+- Configuration epoch for this node (see the Cluster specification).<br />
+- Status of the link to this node.<br />
+- Slots served...<br />
+#### **Manual failover**
+Manual failovers are supported by Redis Cluster using the `CLUSTER FAILOVER` command, that must be executed in one of the slaves of the master you want to failover.<br />
+#### **Adding a new node**
+Adding a new node is basically the process of adding an empty node and then moving some data into it, in case it is a new master, or telling it to setup as a replica of a known node, in case it is a slave.<br />
+In both cases the first step to perform is adding an empty node.<br />
+Now we can use redis-trib as usually in order to add the node to the existing cluster.<br />
+`./redis-trib.rb add-node 127.0.0.1:7006 127.0.0.1:7000`<br />
+Now it is possible to assign hash slots to this node using the resharding feature of redis-trib. It is basically useless to show this as we already did in a previous section, there is no difference, it is just a resharding having as a target the empty node.<br />
+#### **Adding a new node as a replica**
+Adding a new Replica can be performed in two ways. The obvious one is to use redis-trib again, but with the --slave option, like this:<br />
+`./redis-trib.rb add-node --slave 127.0.0.1:7006 127.0.0.1:7000`<br />
+However you can specify exactly what master you want to target with your new replica with the following command line:<br />
+`./redis-trib.rb add-node --slave --master-id 3c3a0c74aae0b56170ccb03a76b60cfe7dc1912e 127.0.0.1:7006 127.0.0.1:7`<br />
+A more manual way to add a replica to a specific master is to add the new node as an empty master, and then turn it into a replica using the `CLUSTER REPLICATE` command. This also works if the node was added as a slave but you want to move it as a replica of a different master.<br />
+#### **Removing a node**
+To remove a slave node just use the del-node command of redis-trib:<br />
+``./redis-trib del-node 127.0.0.1:7000 `<node-id>` ``<br />
+The first argument is just a random node in the cluster, the second argument is the ID of the node you want to remove.<br />
+You can remove a master node in the same way as well, however in order to remove a master node it must be empty. If the master is not empty you need to reshard data away from it to all the other master nodes before.<br />
+An alternative to remove a master node is to perform a manual failover of it over one of its slaves and remove the node after it turned into a slave of the new master. Obviously this does not help when you want to reduce the actual number of masters in your cluster, in that case, a resharding is needed.<br />
+#### **Replicas migration**
+In Redis Cluster it is possible to reconfigure a slave to replicate with a different master at any time just using the following command:<br />
+`CLUSTER REPLICATE <master-node-id>`<br />
+However there is a special scenario where you want replicas to move from one master to another one automatically, without the help of the system administrator. The automatic reconfiguration of replicas is called replicas migration and is able to improve the reliability of a Redis Cluster.<br />
+The reason why you may want to let your cluster replicas to move from one master to another under certain condition, is that usually the Redis Cluster is as resistant to failures as the number of replicas attached to a given master.<br />
+For example a cluster where every master has a single replica can't continue operations if the master and its replica fail at the same time, simply because there is no other instance to have a copy of the hash slots the master was serving. However while netsplits are likely to isolate a number of nodes at the same time, many other kind of failures, like hardware or software failures local to a single node, are a very notable class of failures that are unlikely to happen at the same time, so it is possible that in your cluster where every master has a slave, the slave is killed at 4am, and the master is killed at 6am. This still will result in a cluster that can no longer operate.<br />
+To improve reliability of the system we have the option to add additional replicas to every master, but this is expensive. Replica migration allows to add more slaves to just a few masters. So you have 10 masters with 1 slave each, for a total of 20 instances. However you add, for example, 3 instances more as slaves of some of your masters, so certain masters will have more than a single slave.<br />
+With replicas migration what happens is that if a master is left without slaves, a replica from a master that has multiple slaves will migrate to the orphaned master. So after your slave goes down at 4am as in the example we made above, another slave will take its place, and when the master will fail as well at 5am, there is still a slave that can be elected so that the cluster can continue to operate.<br />
+So what you should know about replicas migration in short?<br />
+- The cluster will try to migrate a replica from the master that has the greatest number of replicas in a given moment.<br />
+- To benefit from replica migration you have just to add a few more replicas to a single master in your cluster, it does not matter what master.<br />
+- There is a configuration parameter that controls the replica migration feature that is called cluster-migration-barrier: you can read more about it in the example redis.conf file provided with Redis Cluster.<br />
+#### **Upgrading nodes in a Redis Cluster**
+Upgrading slave nodes is easy since you just need to stop the node and restart it with an updated version of Redis. If there are clients scaling reads using slave nodes, they should be able to reconnect to a different slave if a given one is not available.<br />
+Upgrading masters is a bit more complex, and the suggested procedure is:<br />
+1. Use CLUSTER FAILOVER to trigger a manual failover of the master to one of its slaves (see the "Manual failover" section of this documentation).<br />
+2. Wait for the master to turn into a slave.<br />
+3. Finally upgrade the node as you do for slaves.<br />
+4. If you want the master to be the node you just upgraded, trigger a new manual failover in order to turn back the upgraded node into a master.<br />
+Following this procedure you should upgrade one node after the other until all the nodes are upgraded.<br />
+#### **Migrating to Redis Cluster**
+Users willing to migrate to Redis Cluster may have just a single master, or may already using a preexisting sharding setup, where keys are split among N nodes, using some in-house algorithm or a sharding algorithm implemented by their client library or Redis proxy.<br />
+In both cases it is possible to migrate to Redis Cluster easily, however what is the most important detail is if multiple-keys operations are used by the application, and how. There are three different cases:<br />
+1. Multiple keys operations, or transactions, or Lua scripts involving multiple keys, are not used. Keys are accessed independently (even if accessed via transactions or Lua scripts grouping multiple commands, about the same key, together).<br />
+2. Multiple keys operations, transactions, or Lua scripts involving multiple keys are used but only with keys having the same hash tag, which means that the keys used together all have a {...} sub-string that happens to be identical. For example the following multiple keys operation is defined in the context of the same hash tag: SUNION {user:1000}.foo {user:1000}.bar.<br />
+3. Multiple keys operations, transactions, or Lua scripts involving multiple keys are used with key names not having an explicit, or the same, hash tag.<br />
+The third case is not handled by Redis Cluster: the application requires to be modified in order to don't use multi keys operations or only use them in the context of the same hash tag.<br />
+Case 1 and 2 are covered, so we'll focus on those two cases, that are handled in the same way, so no distinction will be made in the documentation.<br />
+Assuming you have your preexisting data set split into N masters, where N=1 if you have no preexisting sharding, the following steps are needed in order to migrate your data set to Redis Cluster:<br />
+1. Stop your clients. No automatic live-migration to Redis Cluster is currently possible. You may be able to do it orchestrating a live migration in the context of your application / environment.<br />
+2. Generate an append only file for all of your N masters using the BGREWRITEAOF command, and waiting for the AOF file to be completely generated.<br />
+3. Save your AOF files from aof-1 to aof-N somewhere. At this point you can stop your old instances if you wish (this is useful since in non-virtualized deployments you often need to reuse the same computers).<br />
+4. Create a Redis Cluster composed of N masters and zero slaves. You'll add slaves later. Make sure all your nodes are using the append only file for persistence.<br />
+5. Stop all the cluster nodes, substitute their append only file with your pre-existing append only files, aof-1 for the first node, aof-2 for the second node, up to aof-N.<br />
+6. Restart your Redis Cluster nodes with the new AOF files. They'll complain that there are keys that should not be there according to their configuration.<br />
+7. Use redis-trib fix command in order to fix the cluster so that keys will be migrated according to the hash slots each node is authoritative or not.<br />
+8. Use redis-trib check at the end to make sure your cluster is ok.<br />
+9. Restart your clients modified to use a Redis Cluster aware client library.<br />
+There is an alternative way to import data from external instances to a Redis Cluster, which is to use the redis-trib import command.<br />
